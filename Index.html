@@ -1,0 +1,649 @@
+import React, { useState, useEffect } from ‘react’;
+import { Users, Plus, X, Save, Upload, RotateCcw, Lock, Unlock, Download } from ‘lucide-react’;
+
+export default function BaseballLineupManager() {
+const [isAdmin, setIsAdmin] = useState(false);
+const [passwordInput, setPasswordInput] = useState(’’);
+const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
+const [adminPassword, setAdminPassword] = useState(’’);
+const [showSetupPassword, setShowSetupPassword] = useState(false);
+
+const [players, setPlayers] = useState([]);
+const [positions, setPositions] = useState({
+pitcher: null,
+catcher: null,
+first: null,
+second: null,
+third: null,
+shortstop: null,
+left: null,
+center: null,
+right: null,
+});
+
+const [battingOrder, setBattingOrder] = useState(Array(9).fill(null));
+const [showAddPlayer, setShowAddPlayer] = useState(false);
+const [newPlayer, setNewPlayer] = useState({ name: ‘’, number: ‘’, notes: ‘’ });
+const [draggedPlayer, setDraggedPlayer] = useState(null);
+const [savedLineups, setSavedLineups] = useState([]);
+const [lineupName, setLineupName] = useState(’’);
+const [showSaveLineup, setShowSaveLineup] = useState(false);
+
+const positionLabels = {
+pitcher: ‘P’,
+catcher: ‘C’,
+first: ‘1B’,
+second: ‘2B’,
+third: ‘3B’,
+shortstop: ‘SS’,
+left: ‘LF’,
+center: ‘CF’,
+right: ‘RF’,
+};
+
+const positionStyles = {
+pitcher: { top: ‘70%’, left: ‘50%’ },
+catcher: { top: ‘85%’, left: ‘50%’ },
+first: { top: ‘55%’, left: ‘72%’ },
+second: { top: ‘45%’, left: ‘58%’ },
+third: { top: ‘55%’, left: ‘28%’ },
+shortstop: { top: ‘45%’, left: ‘42%’ },
+left: { top: ‘20%’, left: ‘20%’ },
+center: { top: ‘15%’, left: ‘50%’ },
+right: { top: ‘20%’, left: ‘80%’ },
+};
+
+// Load data from storage
+useEffect(() => {
+const loadData = async () => {
+try {
+// Load admin password
+const passwordResult = await window.storage.get(‘admin_password’, true);
+if (passwordResult) {
+setAdminPassword(passwordResult.value);
+} else {
+setShowSetupPassword(true);
+}
+
+```
+    // Load players
+    const playersResult = await window.storage.get('team_roster', true);
+    if (playersResult) {
+      setPlayers(JSON.parse(playersResult.value));
+    }
+
+    // Load saved lineups
+    const lineupsResult = await window.storage.get('saved_lineups', true);
+    if (lineupsResult) {
+      setSavedLineups(JSON.parse(lineupsResult.value));
+    }
+  } catch (error) {
+    console.log('No existing data found, starting fresh');
+  }
+};
+loadData();
+```
+
+}, []);
+
+// Save players whenever they change
+useEffect(() => {
+if (players.length > 0) {
+const saveData = async () => {
+try {
+await window.storage.set(‘team_roster’, JSON.stringify(players), true);
+} catch (error) {
+console.error(‘Error saving players:’, error);
+}
+};
+saveData();
+}
+}, [players]);
+
+const setupPassword = async () => {
+if (passwordInput.trim().length >= 4) {
+try {
+await window.storage.set(‘admin_password’, passwordInput, true);
+setAdminPassword(passwordInput);
+setIsAdmin(true);
+setShowSetupPassword(false);
+setPasswordInput(’’);
+alert(‘Password set! You are now in admin mode.’);
+} catch (error) {
+alert(‘Error setting password. Please try again.’);
+}
+} else {
+alert(‘Password must be at least 4 characters’);
+}
+};
+
+const checkPassword = () => {
+if (passwordInput === adminPassword) {
+setIsAdmin(true);
+setShowPasswordPrompt(false);
+setPasswordInput(’’);
+alert(‘Admin access granted!’);
+} else {
+alert(‘Incorrect password’);
+setPasswordInput(’’);
+}
+};
+
+const handleDragStart = (e, player) => {
+setDraggedPlayer(player);
+e.dataTransfer.effectAllowed = ‘move’;
+};
+
+const handleDragOver = (e) => {
+e.preventDefault();
+e.dataTransfer.dropEffect = ‘move’;
+};
+
+const handleDropPosition = (e, position) => {
+e.preventDefault();
+if (draggedPlayer) {
+setPositions(prev => ({
+…prev,
+[position]: draggedPlayer
+}));
+setDraggedPlayer(null);
+}
+};
+
+const handleDropBattingOrder = (e, index) => {
+e.preventDefault();
+if (draggedPlayer) {
+const newOrder = […battingOrder];
+newOrder[index] = draggedPlayer;
+setBattingOrder(newOrder);
+setDraggedPlayer(null);
+}
+};
+
+const removeFromPosition = (position) => {
+setPositions(prev => ({
+…prev,
+[position]: null
+}));
+};
+
+const removeFromBattingOrder = (index) => {
+const newOrder = […battingOrder];
+newOrder[index] = null;
+setBattingOrder(newOrder);
+};
+
+const addPlayer = () => {
+if (!isAdmin) {
+alert(‘Only the coach can add players’);
+return;
+}
+if (newPlayer.name.trim()) {
+const id = Math.max(0, …players.map(p => p.id)) + 1;
+setPlayers([…players, {
+id,
+name: newPlayer.name,
+number: newPlayer.number || id,
+available: true,
+notes: newPlayer.notes
+}]);
+setNewPlayer({ name: ‘’, number: ‘’, notes: ‘’ });
+setShowAddPlayer(false);
+}
+};
+
+const toggleAvailability = (id) => {
+if (!isAdmin) {
+alert(‘Only the coach can change player availability’);
+return;
+}
+setPlayers(players.map(p =>
+p.id === id ? { …p, available: !p.available } : p
+));
+};
+
+const deletePlayer = (id) => {
+if (!isAdmin) {
+alert(‘Only the coach can delete players’);
+return;
+}
+if (confirm(‘Delete this player?’)) {
+setPlayers(players.filter(p => p.id !== id));
+const newPositions = { …positions };
+Object.keys(newPositions).forEach(key => {
+if (newPositions[key]?.id === id) {
+newPositions[key] = null;
+}
+});
+setPositions(newPositions);
+setBattingOrder(battingOrder.map(p => p?.id === id ? null : p));
+}
+};
+
+const clearLineup = () => {
+if (confirm(‘Clear all positions and batting order?’)) {
+setPositions({
+pitcher: null,
+catcher: null,
+first: null,
+second: null,
+third: null,
+shortstop: null,
+left: null,
+center: null,
+right: null,
+});
+setBattingOrder(Array(9).fill(null));
+}
+};
+
+const saveCurrentLineup = async () => {
+if (lineupName.trim()) {
+const lineup = {
+id: Date.now(),
+name: lineupName,
+positions,
+battingOrder,
+date: new Date().toLocaleDateString()
+};
+const newLineups = […savedLineups, lineup];
+setSavedLineups(newLineups);
+
+```
+  try {
+    await window.storage.set('saved_lineups', JSON.stringify(newLineups), true);
+    alert('Lineup saved!');
+    setLineupName('');
+    setShowSaveLineup(false);
+  } catch (error) {
+    alert('Error saving lineup');
+  }
+}
+```
+
+};
+
+const loadLineup = (lineup) => {
+setPositions(lineup.positions);
+setBattingOrder(lineup.battingOrder);
+alert(`Loaded lineup: ${lineup.name}`);
+};
+
+const deleteLineup = async (id) => {
+if (confirm(‘Delete this saved lineup?’)) {
+const newLineups = savedLineups.filter(l => l.id !== id);
+setSavedLineups(newLineups);
+try {
+await window.storage.set(‘saved_lineups’, JSON.stringify(newLineups), true);
+} catch (error) {
+console.error(‘Error deleting lineup’);
+}
+}
+};
+
+if (showSetupPassword) {
+return (
+<div className="min-h-screen bg-gradient-to-br from-green-700 to-green-500 p-4 flex items-center justify-center">
+<div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full">
+<div className="text-center mb-6">
+<Lock size={48} className="mx-auto text-blue-600 mb-4" />
+<h2 className="text-2xl font-bold text-gray-800 mb-2">Welcome Coach!</h2>
+<p className="text-gray-600">Set up your admin password to manage the roster</p>
+</div>
+<input
+type=“password”
+placeholder=“Create password (min 4 characters)”
+value={passwordInput}
+onChange={(e) => setPasswordInput(e.target.value)}
+onKeyPress={(e) => e.key === ‘Enter’ && setupPassword()}
+className=“w-full p-3 border-2 border-gray-300 rounded-lg mb-4”
+/>
+<button
+onClick={setupPassword}
+className="w-full bg-blue-600 text-white p-3 rounded-lg font-bold hover:bg-blue-700"
+>
+Set Password & Continue
+</button>
+<p className="text-sm text-gray-500 mt-4 text-center">
+💡 Remember this password! Only you will be able to add/edit players.
+</p>
+</div>
+</div>
+);
+}
+
+return (
+<div className="min-h-screen bg-gradient-to-br from-green-700 to-green-500 p-4">
+<div className="max-w-7xl mx-auto bg-white rounded-xl shadow-2xl overflow-hidden">
+{/* Header */}
+<div className="bg-gradient-to-r from-blue-600 to-blue-500 text-white p-6">
+<div className="flex items-center justify-between mb-2">
+<h1 className="text-4xl font-bold">⚾ Little League Lineup Manager</h1>
+<div className="flex items-center gap-3">
+{isAdmin ? (
+<div className="flex items-center gap-2 bg-green-600 px-4 py-2 rounded-lg">
+<Unlock size={20} />
+<span className="font-bold">Coach Mode</span>
+</div>
+) : (
+<button
+onClick={() => setShowPasswordPrompt(true)}
+className=“flex items-center gap-2 bg-white text-blue-600 px-4 py-2 rounded-lg font-bold hover:bg-blue-50”
+>
+<Lock size={20} />
+Coach Login
+</button>
+)}
+</div>
+</div>
+<p className="text-center text-blue-100">
+{isAdmin ? ‘You can edit roster and create lineups’ : ‘View roster and create lineups’}
+</p>
+</div>
+
+```
+    {showPasswordPrompt && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
+          <h3 className="text-xl font-bold mb-4">Enter Coach Password</h3>
+          <input
+            type="password"
+            placeholder="Password"
+            value={passwordInput}
+            onChange={(e) => setPasswordInput(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && checkPassword()}
+            className="w-full p-3 border-2 border-gray-300 rounded-lg mb-4"
+            autoFocus
+          />
+          <div className="flex gap-3">
+            <button
+              onClick={checkPassword}
+              className="flex-1 bg-blue-600 text-white p-3 rounded-lg font-bold hover:bg-blue-700"
+            >
+              Login
+            </button>
+            <button
+              onClick={() => {
+                setShowPasswordPrompt(false);
+                setPasswordInput('');
+              }}
+              className="flex-1 bg-gray-300 text-gray-700 p-3 rounded-lg font-bold hover:bg-gray-400"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 p-6">
+      {/* Player Roster */}
+      <div className="lg:col-span-3 bg-gray-50 rounded-lg p-4 border-2 border-gray-200">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold text-blue-600 flex items-center gap-2">
+            <Users size={24} />
+            Roster ({players.length})
+          </h2>
+          {isAdmin && (
+            <button
+              onClick={() => setShowAddPlayer(!showAddPlayer)}
+              className="bg-green-500 text-white p-2 rounded-full hover:bg-green-600 transition"
+            >
+              <Plus size={20} />
+            </button>
+          )}
+        </div>
+
+        {showAddPlayer && isAdmin && (
+          <div className="bg-white p-3 rounded-lg mb-4 border border-gray-300">
+            <input
+              type="text"
+              placeholder="Player name"
+              value={newPlayer.name}
+              onChange={(e) => setNewPlayer({ ...newPlayer, name: e.target.value })}
+              className="w-full p-2 border rounded mb-2"
+            />
+            <input
+              type="text"
+              placeholder="Number"
+              value={newPlayer.number}
+              onChange={(e) => setNewPlayer({ ...newPlayer, number: e.target.value })}
+              className="w-full p-2 border rounded mb-2"
+            />
+            <textarea
+              placeholder="Notes (optional)"
+              value={newPlayer.notes}
+              onChange={(e) => setNewPlayer({ ...newPlayer, notes: e.target.value })}
+              className="w-full p-2 border rounded mb-2"
+              rows="2"
+            />
+            <button
+              onClick={addPlayer}
+              className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600"
+            >
+              Add Player
+            </button>
+          </div>
+        )}
+
+        {players.length === 0 && (
+          <div className="text-center text-gray-500 py-8">
+            <Users size={48} className="mx-auto mb-2 opacity-50" />
+            <p>No players yet</p>
+            {isAdmin && <p className="text-sm">Click + to add players</p>}
+          </div>
+        )}
+
+        <div className="space-y-2 max-h-96 overflow-y-auto">
+          {players.map(player => (
+            <div
+              key={player.id}
+              draggable={player.available}
+              onDragStart={(e) => handleDragStart(e, player)}
+              className={`bg-white border-2 rounded-lg p-3 cursor-grab active:cursor-grabbing transition ${
+                player.available ? 'border-gray-300 hover:shadow-lg hover:border-blue-400' : 'border-red-300 opacity-60'
+              }`}
+            >
+              <div className="flex items-start justify-between mb-1">
+                <div className="flex-1">
+                  <div className="font-bold text-blue-600">#{player.number} {player.name}</div>
+                  {player.notes && <div className="text-xs text-gray-600 mt-1">{player.notes}</div>}
+                </div>
+                {isAdmin && (
+                  <button
+                    onClick={() => deletePlayer(player.id)}
+                    className="text-red-500 hover:text-red-700"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-gray-600">Available:</span>
+                <button
+                  onClick={() => toggleAvailability(player.id)}
+                  className={`w-10 h-5 rounded-full transition ${
+                    player.available ? 'bg-green-500' : 'bg-gray-400'
+                  } ${!isAdmin && 'cursor-not-allowed opacity-50'}`}
+                  disabled={!isAdmin}
+                >
+                  <div className={`w-4 h-4 bg-white rounded-full transition transform ${
+                    player.available ? 'translate-x-5' : 'translate-x-0.5'
+                  }`} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Baseball Field */}
+      <div className="lg:col-span-6 bg-gray-50 rounded-lg p-4 border-2 border-gray-200">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold text-blue-600">Field Positions</h2>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowSaveLineup(true)}
+              className="flex items-center gap-2 bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+            >
+              <Save size={18} />
+              Save
+            </button>
+            <button
+              onClick={clearLineup}
+              className="flex items-center gap-2 bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600"
+            >
+              <RotateCcw size={18} />
+              Clear
+            </button>
+          </div>
+        </div>
+        
+        <div className="relative w-full aspect-square max-w-lg mx-auto bg-gradient-to-br from-green-600 to-green-400 rounded-full border-4 border-green-800 shadow-2xl">
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-1/2 h-1/2 bg-amber-700 transform rotate-45 opacity-30"></div>
+          </div>
+
+          {Object.entries(positions).map(([position, player]) => {
+            const style = positionStyles[position];
+            return (
+              <div
+                key={position}
+                onDragOver={handleDragOver}
+                onDrop={(e) => handleDropPosition(e, position)}
+                className={`absolute -translate-x-1/2 -translate-y-1/2 w-20 h-20 rounded-full border-3 flex flex-col items-center justify-center text-sm font-bold transition ${
+                  player 
+                    ? 'bg-blue-500 text-white border-blue-700 shadow-lg' 
+                    : 'bg-white bg-opacity-80 text-gray-700 border-dashed border-gray-400'
+                }`}
+                style={{ top: style.top, left: style.left }}
+              >
+                {player ? (
+                  <>
+                    <div className="text-xs">{positionLabels[position]}</div>
+                    <div className="text-center px-1 leading-tight">#{player.number}</div>
+                    <button
+                      onClick={() => removeFromPosition(position)}
+                      className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center hover:bg-red-600"
+                    >
+                      <X size={14} />
+                    </button>
+                  </>
+                ) : (
+                  <div>{positionLabels[position]}</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Saved Lineups */}
+        {savedLineups.length > 0 && (
+          <div className="mt-4">
+            <h3 className="font-bold text-gray-700 mb-2">Saved Lineups:</h3>
+            <div className="space-y-2 max-h-32 overflow-y-auto">
+              {savedLineups.map(lineup => (
+                <div key={lineup.id} className="flex items-center justify-between bg-white p-2 rounded border">
+                  <div className="flex-1">
+                    <div className="font-semibold">{lineup.name}</div>
+                    <div className="text-xs text-gray-500">{lineup.date}</div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => loadLineup(lineup)}
+                      className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600"
+                    >
+                      Load
+                    </button>
+                    <button
+                      onClick={() => deleteLineup(lineup.id)}
+                      className="bg-red-500 text-white px-2 py-1 rounded text-sm hover:bg-red-600"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Batting Order */}
+      <div className="lg:col-span-3 bg-gray-50 rounded-lg p-4 border-2 border-gray-200">
+        <h2 className="text-xl font-bold text-blue-600 mb-4">Batting Order</h2>
+        <div className="space-y-2">
+          {battingOrder.map((player, index) => (
+            <div
+              key={index}
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDropBattingOrder(e, index)}
+              className={`border-2 rounded-lg p-3 min-h-16 transition ${
+                player 
+                  ? 'bg-orange-500 text-white border-orange-600' 
+                  : 'bg-white border-dashed border-gray-400'
+              }`}
+            >
+              {player ? (
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-bold">#{index + 1}</div>
+                    <div className="font-semibold">#{player.number} {player.name}</div>
+                  </div>
+                  <button
+                    onClick={() => removeFromBattingOrder(index)}
+                    className="bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-600"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ) : (
+                <div className="text-center text-gray-400 font-semibold">
+                  #{index + 1} - Drop player here
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+
+    {showSaveLineup && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
+          <h3 className="text-xl font-bold mb-4">Save Current Lineup</h3>
+          <input
+            type="text"
+            placeholder="Lineup name (e.g., 'Game vs Tigers')"
+            value={lineupName}
+            onChange={(e) => setLineupName(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && saveCurrentLineup()}
+            className="w-full p-3 border-2 border-gray-300 rounded-lg mb-4"
+            autoFocus
+          />
+          <div className="flex gap-3">
+            <button
+              onClick={saveCurrentLineup}
+              className="flex-1 bg-green-600 text-white p-3 rounded-lg font-bold hover:bg-green-700"
+            >
+              Save Lineup
+            </button>
+            <button
+              onClick={() => {
+                setShowSaveLineup(false);
+                setLineupName('');
+              }}
+              className="flex-1 bg-gray-300 text-gray-700 p-3 rounded-lg font-bold hover:bg-gray-400"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+  </div>
+</div>
+```
+
+);
+}
